@@ -31,7 +31,7 @@ nyc                         (catalog)
 ├── nyc_bronze               raw ingested data
 ├── nyc_silver               cleaned/standardized data
 ├── nyc_gold                 star schema (fact + dimensions)
-└── nyc_quality               reserved for DQ results (created, not yet used — see §7)
+└── nyc_quality               reserved for DQ results
 ```
 
 ### Repository structure
@@ -110,7 +110,7 @@ as a known limitation, not a bug.
 ## 4. TRUST — How we know the data is correct
 
 DQ is layered: source inspection → Bronze checks → Silver checks → Gold
-(mart) checks. See `monitoring.md` §3 for the severity policy
+(mart) checks. See `monitoring.md` for the severity policy
 (PASS/WARN/FAIL) and worked examples from the actual checks in this repo.
 
 ---
