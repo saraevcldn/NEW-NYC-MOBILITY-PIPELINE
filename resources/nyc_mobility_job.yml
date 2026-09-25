@@ -138,7 +138,7 @@ resources:
         - task_key: dim_datetime
 
           depends_on:
-            - task_key: clean_green_taxi
+            - task_key: init_schemas
 
           sql_task:
             file:
@@ -149,7 +149,7 @@ resources:
         - task_key: dim_location
 
           depends_on:
-            - task_key: clean_taxi_zones
+            - task_key: check_taxi_zones
 
           sql_task:
             file:
@@ -164,7 +164,7 @@ resources:
         - task_key: fact_taxi_trip_dlt
 
           depends_on:
-            - task_key: clean_green_taxi
+            - task_key: check_green_taxi
             - task_key: dim_datetime
             - task_key: dim_location
             - task_key: dim_weather_dlt
@@ -174,7 +174,107 @@ resources:
               path: ../src/sql/03_gold_model/fact_taxi_trip_dlt.sql
             warehouse_id: 8414776a94d0039f
 
+        # ==========================================
+        # 04 - DATA QUALITY
+        
+        # Data Quality Checks
+        - task_key: check_green_taxi
 
+          depends_on:
+            - task_key: clean_green_taxi
+
+          environment_key: default
+
+          spark_python_task:
+            python_file: ../src/sql/04_data_quality/02_clean_checks/check_clean_green_taxi.py
+
+        - task_key: check_taxi_zones
+
+          depends_on:
+            - task_key: clean_taxi_zones
+
+          environment_key: default
+
+          spark_python_task:
+            python_file: ../src/sql/04_data_quality/02_clean_checks/check_clean_taxi_zone.py
+
+        - task_key: check_weather
+
+          depends_on:
+            - task_key: clean_weather_dlt
+
+          environment_key: default
+
+          spark_python_task:
+            python_file: ../src/sql/04_data_quality/02_clean_checks/check_clean_weather.py
+        
+        # QUARANTINE
+
+        - task_key: quarantine_green_taxi
+
+          depends_on:
+            - task_key: check_green_taxi
+
+          run_if: ALL_DONE
+          
+          sql_task:
+            file:
+              path: ../src/sql/04_data_quality/04_quarantine_tables/green_taxi_quarantine.sql
+            warehouse_id: 8414776a94d0039f
+
+
+        - task_key: quarantine_taxi_zones
+
+          depends_on:
+            - task_key: check_taxi_zones
+
+          run_if: ALL_DONE
+          
+          sql_task:
+            file:
+              path: ../src/sql/04_data_quality/04_quarantine_tables/taxi_zone_quarantine.sql
+            warehouse_id: 8414776a94d0039f
+
+
+        - task_key: quarantine_weather
+
+          depends_on:
+            - task_key: check_weather
+          
+          run_if: ALL_DONE
+          
+          sql_task:
+            file:
+              path: ../src/sql/04_data_quality/04_quarantine_tables/weather_quarantine.sql
+            warehouse_id: 8414776a94d0039f
+
+
+        # DQ WARN MONITORING
+
+        - task_key: monitor_dq_warnings
+
+          depends_on:
+            - task_key: check_green_taxi
+            - task_key: check_taxi_zones
+            - task_key: check_weather
+
+          sql_task:
+            file:
+              path: ../src/sql/04_data_quality/05_warn_monitoring/01_monitor_dq_warnings.sql
+            warehouse_id: 8414776a94d0039f
+
+
+        - task_key: alert_dq_warnings
+
+          depends_on:
+            - task_key: monitor_dq_warnings
+
+          environment_key: default
+
+          spark_python_task:
+            python_file: ../src/sql/04_data_quality/05_warn_monitoring/02_alert_dq_warnings.py
+        
+        # ==========================================
         # 05 - ANALYTICS
 
         - task_key: taxi_demand
@@ -238,7 +338,7 @@ resources:
         - task_key: dim_weather_dlt
 
           depends_on:
-            - task_key: clean_weather_dlt
+            - task_key: check_weather
 
           sql_task:
             file:
