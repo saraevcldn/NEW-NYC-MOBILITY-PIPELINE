@@ -1,4 +1,3 @@
-%python
 """
 Purpose:
 Detect increasing DQ WARN trends and fail the Databricks task when
