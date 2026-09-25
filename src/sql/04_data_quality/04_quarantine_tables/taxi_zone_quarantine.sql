@@ -60,7 +60,7 @@ fail_flags AS (
         END) AS missing_zone,
 
         MAX(CASE
-            WHEN check_name = 'Missing service_zone'
+            WHEN check_name = 'Missing service zone'
             THEN 1 ELSE 0
         END) AS missing_service_zone,
 
@@ -95,29 +95,19 @@ fail_flags AS (
         END) AS invalid_location_id,
 
         MAX(CASE
-            WHEN check_name = 'Invalid borough'
+            WHEN check_name = 'Invalid borough value'
             THEN 1 ELSE 0
         END) AS invalid_borough,
 
         MAX(CASE
-            WHEN check_name = 'Invalid service_zone'
+            WHEN check_name = 'Invalid service_zone value'
             THEN 1 ELSE 0
         END) AS invalid_service_zone,
 
         MAX(CASE
-            WHEN check_name = 'Unstandardized borough'
+            WHEN check_name = 'Unstandardized text values'
             THEN 1 ELSE 0
-        END) AS unstandardized_borough,
-
-        MAX(CASE
-            WHEN check_name = 'Unstandardized zone'
-            THEN 1 ELSE 0
-        END) AS unstandardized_zone,
-
-        MAX(CASE
-            WHEN check_name = 'Unstandardized service_zone'
-            THEN 1 ELSE 0
-        END) AS unstandardized_service_zone
+        END) AS unstandardized_text
 
     FROM failed_checks
 ),
@@ -161,7 +151,7 @@ failed_records AS (
                 CASE
                     WHEN f.missing_service_zone = 1
                          AND z.service_zone IS NULL
-                    THEN 'Missing service_zone'
+                    THEN 'Missing service zone'
                 END,
 
                 CASE
@@ -217,7 +207,7 @@ failed_records AS (
                              'UNKNOWN',
                              'N/A'
                          )
-                    THEN 'Invalid borough'
+                    THEN 'Invalid borough value'
                 END,
 
                 CASE
@@ -230,25 +220,25 @@ failed_records AS (
                              'AIRPORTS',
                              'N/A'
                          )
-                    THEN 'Invalid service_zone'
+                    THEN 'Invalid service_zone value'
                 END,
 
                 CASE
-                    WHEN f.unstandardized_borough = 1
+                    WHEN f.unstandardized_text = 1
                          AND z.borough IS NOT NULL
                          AND z.borough != UPPER(TRIM(z.borough))
                     THEN 'Unstandardized borough'
                 END,
 
                 CASE
-                    WHEN f.unstandardized_zone = 1
+                    WHEN f.unstandardized_text = 1
                          AND z.zone IS NOT NULL
                          AND z.zone != TRIM(z.zone)
                     THEN 'Unstandardized zone'
                 END,
 
                 CASE
-                    WHEN f.unstandardized_service_zone = 1
+                    WHEN f.unstandardized_text = 1
                          AND z.service_zone IS NOT NULL
                          AND z.service_zone != UPPER(TRIM(z.service_zone))
                     THEN 'Unstandardized service_zone'

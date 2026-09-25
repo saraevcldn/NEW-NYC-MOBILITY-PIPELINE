@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS nyc.nyc_quality.green_taxi_quarantine (
 WITH latest_dq_run AS (
     SELECT dq_run_id
     FROM nyc.nyc_quality.dq_results
+    WHERE table_name = 'green_taxi_silver'
     ORDER BY dq_run_timestamp DESC
     LIMIT 1
 ),
@@ -73,8 +74,9 @@ failed_checks AS (
     SELECT
         check_name
     FROM nyc.nyc_quality.dq_results
-    WHERE dq_run_id = (SELECT dq_run_id FROM latest_dq_run)
-      AND status = 'FAIL'
+    WHERE table_name = 'green_taxi_silver'
+        AND dq_run_id = (SELECT dq_run_id FROM latest_dq_run)
+        AND status = 'FAIL'
 ),
 
 -- Convert failed checks into flags
