@@ -42,7 +42,7 @@ resources:
           environment_key: default
 
           spark_python_task:
-            python_file: ../src/sql/00_setup/download_green_taxi.py
+            python_file: ../src/sql/00_setup/download_green_taxi_incremental.py
 
           # RETRY POLICY
           max_retries: 2
@@ -80,7 +80,7 @@ resources:
           environment_key: default
 
           spark_python_task:
-            python_file: ../src/sql/01_bronze_ingest/ingest_green_taxi.py
+            python_file: ../src/sql/01_bronze_ingest/ingest_green_taxi_idempotent.py
 
           # RETRY POLICY
           max_retries: 2
