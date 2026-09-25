@@ -102,7 +102,7 @@ weather_with_duplicates AS (
             PARTITION BY timestamp
         ) AS timestamp_count
 
-    FROM nyc.nyc_silver.clean_weather w
+    FROM nyc.nyc_silver.clean_weather_dlt w
 ),
 
 failed_records AS (
