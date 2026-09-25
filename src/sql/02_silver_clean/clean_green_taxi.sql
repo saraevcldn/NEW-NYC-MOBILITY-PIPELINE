@@ -124,9 +124,6 @@ USING (
             -- Drop trips with no distance
             AND trip_distance > 0
 
-            -- Drop trips with no passengers
-            AND passenger_count > 0
-
             -- Project scope: March through May 2026 only
             AND lpep_pickup_datetime >= '2026-03-01'
             AND lpep_pickup_datetime <= current_date()
