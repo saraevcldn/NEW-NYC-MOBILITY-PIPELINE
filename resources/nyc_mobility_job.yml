@@ -4,6 +4,13 @@ resources:
 
       name: NYC Mobility Pipeline
 
+      # MONTHLY SCHEDULE
+      # Runs at 2:00 AM on the 1st day of every month
+      schedule:
+        quartz_cron_expression: "0 0 2 1 * ?"
+        timezone_id: "Asia/Manila"
+        pause_status: UNPAUSED
+
       # FAILURE EMAIL NOTIFICATIONS
       email_notifications:
         on_failure:
