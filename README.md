@@ -22,6 +22,9 @@ Open API ───────────┘          ▼
                             Silver
                               │
                               ▼
+                            DQ Checks
+                              │
+                              ▼
                              Gold
                               │
                               ▼
@@ -61,7 +64,7 @@ The project focuses on:
 | **Source Inspection** | Validates incoming NYC Mobility source data before ingestion | Inspects Green Taxi, Taxi Zone, and Open-Meteo sources, checks schemas, identifies missing or empty data, compares monthly Green Taxi schemas, and establishes a data-quality baseline |
 | **Bronze** | Stores the raw source data in Delta tables | Preserves source structure, adds ingestion metadata, and provides the foundation for downstream processing |
 | **Silver** | Creates clean and standardized datasets | Standardizes data types and categories, handles missing and invalid values, applies business rules, removes duplicates, and prepares taxi, location, and weather data for modeling |
-| **Gold** | Creates the analytical data warehouse | Builds `fact_taxi_trip`, `dim_datetime`, `dim_location`, and `dim_weather`, defines the taxi trip grain, creates surrogate keys, and maintains relationships between trips and their datetime, location, and weather context |
+| **Gold** | Creates the analytical data warehouse | Builds `fact_taxi_trip`, `dim_datetime`, `dim_location`, and `dim_weather_dlt`, defines the taxi trip grain, creates surrogate keys, and maintains relationships between trips and their datetime, location, and weather context |
 | **Analytics** | Uses Gold data to answer NYC Mobility business questions | Analyzes taxi demand, pickup and dropoff patterns, trip duration and distance, fare activity, rush-hour patterns, location trends, and the relationship between taxi activity and weather |
 ---
 
@@ -73,7 +76,7 @@ The Gold layer consists of **one fact table** and **three dimensions**.
 
 | Fact Table       | Grain                 | Main Measures                                                                              |
 | ---------------- | --------------------- | ------------------------------------------------------------------------------------------ |
-| `fact_taxi_trip` | One row per taxi trip | `passenger_count`, `trip_distance`, `trip_duration_minutes`, `fare_amount`, `total_amount` |
+| `fact_taxi_trip_dlt` | One row per taxi trip | `passenger_count`, `trip_distance`, `trip_duration_minutes`, `fare_amount`, `total_amount` |
 
 ## Dimension Tables
 
@@ -81,7 +84,7 @@ The Gold layer consists of **one fact table** and **three dimensions**.
 | -------------- | ---------------------------- | --------------------------------------------- |
 | `dim_datetime` | One row per datetime         | Date and time attributes for taxi trip events |
 | `dim_location` | One row per taxi zone        | NYC taxi zone and location information        |
-| `dim_weather`  | One row per weather datetime | Weather conditions and measurements           |
+| `dim_weather_dlt`  | One row per weather datetime | Weather conditions and measurements           |
 
 ---
 
@@ -92,10 +95,10 @@ The Gold layer consists of **one fact table** and **three dimensions**.
                               │
                               │
                               ▼
-                       fact_taxi_trip
+                       fact_taxi_trip_dlt
                        /           \
                       ▼             ▼
-             dim_location     dim_weather
+             dim_location     dim_weather_dlt
 ```
 
 The star schema separates **measurable taxi trip events** in the fact table from **descriptive attributes** in the dimension tables, making the data easier to query and analyze.
@@ -119,7 +122,20 @@ The pipeline uses the shared `dim_datetime` for both pickup and dropoff timestam
 This allows taxi trips to be compared based on **time of day, day of week, month, season, weekends, and rush hours**.
 
 ---
+## dlt / Open-Meteo
 
+In this project, **dlt refers to the open-source Python library** — not
+Databricks Delta Live Tables, a different product with the same
+abbreviation.
+
+Weather ingestion runs via dlt as a GitHub Actions step rather than
+inside Databricks — a deliberate workaround, not an inconsistency.
+Databricks Free Edition's serverless compute blocks a network call dlt
+needs; GitHub Actions has normal network access, so that one step runs
+there instead. Everything downstream (`clean_weather_dlt`,
+`dim_weather_dlt`) still runs as a normal Databricks task.
+
+---
 # How to Run
 
 ### Prerequisites
@@ -175,10 +191,9 @@ Green Taxi data is provided as Parquet files, Taxi Zone data as CSV, and weather
 6. Gold modeling
 7. Analytics
 ```
+Weather data (dlt) is ingested separately, via a GitHub Actions workflow (.github/workflows/ci-cd.yml) rather than as a step in this list — run that before step 3 so weather data is available when Silver runs.
 
-DQ checks currently exist as separate scripts and are run manually —
-they are not yet automated tasks in the deployed job. See
-`docs/monitoring.md` and `docs/runbook.md`.
+DQ checks are automated tasks in the deployed job — a failing check blocks its downstream Gold table from running. See docs/monitoring.md and docs/runbook.md.
 
 ## Team Responsibilities
 
@@ -238,7 +253,7 @@ The completed pipeline provides:
 * A standardized process for ingesting **NYC Green Taxi, Taxi Zone, and Open-Meteo weather data**.
 * A **Bronze layer** that preserves raw source data and ingestion metadata.
 * A **Silver layer** that cleans, standardizes, validates, and prepares data for analytical modeling.
-* A **Gold layer** containing the `fact_taxi_trip`, `dim_datetime`, `dim_location`, and `dim_weather` tables.
+* A **Gold layer** containing the `fact_taxi_trip_dlt`, `dim_datetime`, `dim_location`, and `dim_weather_dlt` tables.
 * Data-quality validation across the Source Inspection, Bronze, Silver, Gold, and Analytics layers.
 * Time-based analysis showing how taxi demand changes by **hour and day of the week**.
 * Geographic analysis showing differences in taxi activity across **NYC boroughs and locations**.
