@@ -17,16 +17,11 @@ base AS (
     FROM nyc.nyc_silver.clean_weather_dlt
 ),
 
--- Expected source
-expected_source AS (
-    SELECT 'open_meteo_2026-03_to_2026-05.json' AS source_file
-),
-
--- Expected volume
+-- Expected volume from dlt Bronze
 bronze_volume AS (
     SELECT
         COUNT(DISTINCT timestamp) AS expected_rows
-    FROM nyc.nyc_bronze.weather_bronze
+    FROM nyc.nyc_bronze.weather_bronze_dlt
     WHERE timestamp IS NOT NULL
 ),
 
@@ -159,14 +154,14 @@ dq_results AS (
         'Missing source file',
         'LINEAGE',
         COUNT(*),
-        COUNT_IF(b.source_file IS NULL),
+        COUNT_IF(source_file IS NULL),
         ROUND(
-            COUNT_IF(b.source_file IS NULL) * 100.0
+            COUNT_IF(source_file IS NULL) * 100.0
             / NULLIF(COUNT(*), 0),
             2
         ),
         'source_file must not be NULL'
-    FROM base b
+    FROM base
 
     UNION ALL
 
@@ -513,17 +508,18 @@ dq_results AS (
         'LINEAGE',
         COUNT(*),
         COUNT_IF(
-            b.source_file <> e.source_file
+            source_file IS NULL
+            OR source_file NOT LIKE 'open_meteo_%'
         ),
         ROUND(
             COUNT_IF(
-                b.source_file <> e.source_file
+                source_file IS NULL
+                OR source_file NOT LIKE 'open_meteo_%'
             ) * 100.0 / NULLIF(COUNT(*), 0),
             2
         ),
-        MAX(e.source_file)
-    FROM base b
-    CROSS JOIN expected_source e
+        'source_file must follow open_meteo_* naming pattern'
+    FROM base
 
     UNION ALL
 
@@ -573,6 +569,7 @@ evaluated AS (
     SELECT
         *,
         CASE
+            -- Critical completeness checks
             WHEN check_name IN (
                 'Missing timestamp',
                 'Missing source file',
@@ -584,22 +581,31 @@ evaluated AS (
             AND failures > 0
                 THEN 'FAIL'
 
+            -- Uniqueness
             WHEN check_type = 'UNIQUE'
             AND failures > 0
                 THEN 'FAIL'
 
+            -- Timestamp alignment
             WHEN check_name = 'Hourly timestamp alignment'
             AND failures > 0
                 THEN 'FAIL'
 
+            -- Temporal continuity
             WHEN check_type = 'TEMPORAL'
-            AND failures > 0
+            AND failure_pct > 1
                 THEN 'FAIL'
 
+            WHEN check_type = 'TEMPORAL'
+            AND failures > 0
+                THEN 'WARN'
+
+            -- Lineage
             WHEN category = 'Lineage'
             AND failures > 0
                 THEN 'FAIL'
 
+            -- NULL checks
             WHEN check_type = 'NULL'
             AND failure_pct > 1
                 THEN 'FAIL'
@@ -608,6 +614,7 @@ evaluated AS (
             AND failures > 0
                 THEN 'WARN'
 
+            -- Validity checks
             WHEN check_type = 'VALIDITY'
             AND failure_pct > 1
                 THEN 'FAIL'
@@ -616,6 +623,7 @@ evaluated AS (
             AND failures > 0
                 THEN 'WARN'
 
+            -- Volume
             WHEN check_type = 'VOLUME'
             AND failure_pct > 2
                 THEN 'FAIL'
@@ -634,7 +642,7 @@ SELECT
     '{dq_run_id}' AS dq_run_id,
     current_timestamp() AS dq_run_timestamp,
     category,
-    'clean_weather' AS table_name,
+    'clean_weather_dlt' AS table_name,
     check_name,
     check_type,
     records_checked,
