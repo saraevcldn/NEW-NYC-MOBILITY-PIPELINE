@@ -45,7 +45,7 @@ bronze_valid AS (
             AND total_amount >= 0
             AND trip_distance > 0
             AND lpep_pickup_datetime >= '2026-03-01'
-            AND lpep_pickup_datetime < '2026-06-01'
+            AND lpep_pickup_datetime < current_date()
             AND date_format(lpep_pickup_datetime, 'yyyy-MM') = source_month
     )
     WHERE row_num = 1

@@ -14,7 +14,7 @@ WITH
 -- Base data
 base AS (
     SELECT *
-    FROM nyc.nyc_silver.clean_weather
+    FROM nyc.nyc_silver.clean_weather_dlt
 ),
 
 -- Expected source
