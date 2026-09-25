@@ -1,7 +1,5 @@
 %python
 """
-DQ WARN Monitoring Alert
-
 Purpose:
 Detect increasing DQ WARN trends and fail the Databricks task when
 a warning condition gets worse between DQ runs.
@@ -27,10 +25,17 @@ WITH ranked_warns AS (
         dq_run_id,
         warning_pct,
 
+        -- Get the previous warning percentage for comparison
         LAG(warning_pct) OVER (
             PARTITION BY table_name, check_name
             ORDER BY dq_run_timestamp
-        ) AS previous_warning_pct
+        ) AS previous_warning_pct,
+
+         -- Rank WARN records from newest to oldest
+        ROW_NUMBER() OVER (
+            PARTITION BY table_name, check_name
+            ORDER BY dq_run_timestamp DESC
+        ) AS recency_rank
 
     FROM nyc.nyc_quality.dq_warn_monitoring
 ),
@@ -44,12 +49,16 @@ warning_alerts AS (
         dq_run_id,
         warning_pct,
         previous_warning_pct,
+
+        -- Calculate the change in warning percentage points
         ROUND(warning_pct - previous_warning_pct, 2) AS change_in_pct_points
 
     FROM ranked_warns
 
-    WHERE previous_warning_pct IS NOT NULL
-      AND warning_pct > previous_warning_pct
+    -- Only evaluate the latest WARN result
+    WHERE recency_rank = 1
+        AND previous_warning_pct IS NOT NULL
+        AND warning_pct > previous_warning_pct
 )
 
 SELECT *

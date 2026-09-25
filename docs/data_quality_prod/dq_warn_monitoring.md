@@ -191,9 +191,9 @@ src/python/04_quality/alert_dq_warnings.py
 
 The SQL used to detect increasing WARN trends is embedded directly in the Python task.
 
-The current warning percentage is compared with the previous warning percentage for the same dataset and DQ check.
+The alert logic compares the **latest WARN result** with the immediately previous result for the same dataset and DQ check.
 
-The previous value is obtained using:
+The previous warning percentage is obtained using:
 
 ```sql
 LAG(warning_pct) OVER (
@@ -202,7 +202,28 @@ LAG(warning_pct) OVER (
 )
 ```
 
-The trend is determined by comparing the current and previous values:
+A recency rank is also assigned to each WARN result:
+
+```sql
+ROW_NUMBER() OVER (
+    PARTITION BY table_name, check_name
+    ORDER BY dq_run_timestamp DESC
+) AS recency_rank
+```
+
+The most recent result has:
+
+```text
+recency_rank = 1
+```
+
+Only this latest result is evaluated for alerting.
+
+This is important because the monitoring table contains historical WARN results. Without filtering to the latest result, an older WARN increase could trigger an alert even when the latest DQ run has already improved.
+
+### Trend classification
+
+For the latest WARN result:
 
 ```text
 Current > Previous
@@ -224,16 +245,49 @@ current warning percentage - previous warning percentage
 
 ### Example
 
-```text
-Previous warning rate: 15.61%
-Current warning rate:  18.20%
+Consider the following history:
 
-18.20 - 15.61 = +2.59 percentage points
+```text
+Run 1 → 10.00%
+Run 2 → 12.00%
+Run 3 → 15.00%
+Run 4 → 14.00%
+```
+
+There were increases between earlier runs:
+
+```text
+10.00% → 12.00%
+12.00% → 15.00%
+```
+
+However, the latest result is:
+
+```text
+Previous: 15.00%
+Latest:   14.00%
+
+14.00 - 15.00 = -1.00 percentage point
+
+Trend: DECREASING
+```
+
+Therefore, **no alert is triggered**.
+
+If the latest run instead contained:
+
+```text
+Previous: 15.00%
+Latest:   18.00%
+
+18.00 - 15.00 = +3.00 percentage points
 
 Trend: INCREASING
 ```
 
-An increasing trend becomes an alert condition.
+the alert task would be triggered.
+
+This ensures that alerting reflects the **latest DQ state** rather than historical warning increases.
 
 ## Monitoring vs DQ Validation
 
@@ -353,38 +407,58 @@ The absence of Weather and Taxi Zones records in `dq_warn_monitoring` is expecte
 src/python/04_quality/alert_dq_warnings.py
 ```
 
-The Python alert task reads the WARN monitoring results and checks for increasing warning trends.
+The Python alert task reads the WARN monitoring results and checks whether the **latest warning condition is increasing compared with the previous DQ run**.
 
 The task:
 
 1. Reads the centralized WARN monitoring data.
-2. Compares the current warning percentage with the previous run.
-3. Identifies increasing WARN trends.
-4. Counts the detected alert conditions.
-5. Raises an exception if one or more increasing WARNs are found.
-6. Succeeds when no increasing WARN is detected.
+2. Calculates the previous warning percentage using `LAG()`.
+3. Assigns a recency rank using `ROW_NUMBER()`.
+4. Keeps only the latest WARN result using `recency_rank = 1`.
+5. Compares the latest warning percentage with the previous result.
+6. Identifies increasing WARN conditions.
+7. Counts the detected alert conditions.
+8. Raises an exception if one or more latest WARN conditions are increasing.
+9. Succeeds when no increasing WARN is detected.
 
-Current behavior:
-
-```text
-No increasing WARN
-        ↓
-Task succeeds
-        ↓
-Pipeline continues
-```
-
-If a warning increases:
+The alert logic therefore focuses on the **current WARN state**:
 
 ```text
-Increasing WARN
-        ↓
-Python task raises exception
-        ↓
-Databricks task fails
-        ↓
-Job alert/notification
+Latest WARN
+     ↓
+Compare with previous run
+     ↓
+Increasing?
+ ┌───────┴───────┐
+ NO              YES
+ ↓                ↓
+Continue         ALERT
+                 ↓
+                STOP
 ```
+
+Historical increases that are no longer present in the latest run do not trigger a new alert.
+
+### Why this approach is used
+
+The purpose of the alert is to identify **current deterioration**, not simply whether a warning has increased at some point in history.
+
+For example:
+
+```text
+10% → 12% → 15% → 14%
+```
+
+Although the warning increased in earlier runs, the latest result decreased from 15% to 14%.
+
+Therefore:
+
+```text
+Latest trend = DECREASING
+Alert = NO
+```
+
+This prevents stale historical increases from repeatedly triggering alerts.
 
 ## Current Implementation Status
 
