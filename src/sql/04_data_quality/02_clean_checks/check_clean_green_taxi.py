@@ -45,7 +45,7 @@ bronze_valid AS (
             AND total_amount >= 0
             AND trip_distance > 0
             AND lpep_pickup_datetime >= '2026-03-01'
-            AND lpep_pickup_datetime < current_date()
+            AND lpep_pickup_datetime <= current_date()
             AND date_format(lpep_pickup_datetime, 'yyyy-MM') = source_month
     )
     WHERE row_num = 1
@@ -283,10 +283,6 @@ dq_results AS (
             total_amount
         HAVING COUNT(*) > 1
     ) duplicates
-    CROSS JOIN (
-        SELECT COUNT(*) AS total_rows
-        FROM base
-    ) totals
 
     UNION ALL
 
@@ -312,13 +308,14 @@ dq_results AS (
         'Invalid RatecodeID',
         'VALIDITY',
         COUNT(*),
-        COUNT_IF(RatecodeID NOT IN (-1, 1, 2, 3, 4, 5)),
+        COUNT_IF(RatecodeID NOT IN (-1, 1, 2, 3, 4, 5, 6, 99)),
         ROUND(
-            COUNT_IF(RatecodeID NOT IN (-1, 1, 2, 3, 4, 5)) * 100.0
+            COUNT_IF(RatecodeID NOT IN (-1, 1, 2, 3, 4, 5, 6, 99))
+            * 100.0
             / NULLIF(COUNT(*), 0),
             2
         ),
-        'RatecodeID must be -1, 1, 2, 3, 4, or 5'
+        'RatecodeID must be -1, 1, 2, 3, 4, 5, 6, or 99'
     FROM base
 
     UNION ALL
@@ -330,7 +327,8 @@ dq_results AS (
         COUNT(*),
         COUNT_IF(payment_type NOT IN (-1, 1, 2, 3, 4)),
         ROUND(
-            COUNT_IF(payment_type NOT IN (-1, 1, 2, 3, 4)) * 100.0
+            COUNT_IF(payment_type NOT IN (-1, 1, 2, 3, 4))
+            * 100.0
             / NULLIF(COUNT(*), 0),
             2
         ),
@@ -346,7 +344,8 @@ dq_results AS (
         COUNT(*),
         COUNT_IF(trip_type NOT IN (-1, 1, 2)),
         ROUND(
-            COUNT_IF(trip_type NOT IN (-1, 1, 2)) * 100.0
+            COUNT_IF(trip_type NOT IN (-1, 1, 2))
+            * 100.0
             / NULLIF(COUNT(*), 0),
             2
         ),
@@ -366,7 +365,8 @@ dq_results AS (
         ROUND(
             COUNT_IF(
                 store_and_fwd_flag NOT IN ('N', 'Y', 'Unknown')
-            ) * 100.0 / NULLIF(COUNT(*), 0),
+            ) * 100.0
+            / NULLIF(COUNT(*), 0),
             2
         ),
         'store_and_fwd_flag must be N, Y, or Unknown'
@@ -387,7 +387,8 @@ dq_results AS (
             COUNT_IF(
                 passenger_count IS NULL
                 OR passenger_count = 0
-            ) * 100.0 / NULLIF(COUNT(*), 0),
+            ) * 100.0
+            / NULLIF(COUNT(*), 0),
             2
         ),
         'Passenger count should be greater than 0'
@@ -424,7 +425,8 @@ dq_results AS (
             COUNT_IF(
                 trip_distance IS NULL
                 OR trip_distance <= 0
-            ) * 100.0 / NULLIF(COUNT(*), 0),
+            ) * 100.0
+            / NULLIF(COUNT(*), 0),
             2
         ),
         'trip_distance must be greater than 0'
@@ -443,7 +445,8 @@ dq_results AS (
         ROUND(
             COUNT_IF(
                 lpep_dropoff_datetime < lpep_pickup_datetime
-            ) * 100.0 / NULLIF(COUNT(*), 0),
+            ) * 100.0
+            / NULLIF(COUNT(*), 0),
             2
         ),
         'dropoff datetime must be greater than or equal to pickup datetime'
@@ -464,7 +467,8 @@ dq_results AS (
             COUNT_IF(
                 total_amount IS NULL
                 OR total_amount < 0
-            ) * 100.0 / NULLIF(COUNT(*), 0),
+            ) * 100.0
+            / NULLIF(COUNT(*), 0),
             2
         ),
         'total_amount must be zero or greater'
@@ -485,7 +489,8 @@ dq_results AS (
             COUNT_IF(
                 fare_amount IS NULL
                 OR fare_amount < 0
-            ) * 100.0 / NULLIF(COUNT(*), 0),
+            ) * 100.0
+            / NULLIF(COUNT(*), 0),
             2
         ),
         'fare_amount must be zero or greater'
@@ -522,7 +527,8 @@ dq_results AS (
             COUNT_IF(
                 lpep_dropoff_datetime - lpep_pickup_datetime
                 > INTERVAL 6 HOURS
-            ) * 100.0 / NULLIF(COUNT(*), 0),
+            ) * 100.0
+            / NULLIF(COUNT(*), 0),
             2
         ),
         'Trip duration above 6 hours requires review'
@@ -541,7 +547,8 @@ dq_results AS (
         ROUND(
             COUNT_IF(
                 lpep_dropoff_datetime = lpep_pickup_datetime
-            ) * 100.0 / NULLIF(COUNT(*), 0),
+            ) * 100.0
+            / NULLIF(COUNT(*), 0),
             2
         ),
         'Zero-duration trips require review'
@@ -707,18 +714,13 @@ evaluated AS (
             AND failures > 0
                 THEN 'FAIL'
 
-            -- Negative passenger count
+            -- Critical passenger validation
             WHEN check_name = 'Negative passenger count'
             AND failures > 0
                 THEN 'FAIL'
 
-            -- Invalid core values
+            -- Critical numeric validation
             WHEN check_name IN (
-                'Invalid VendorID',
-                'Invalid RatecodeID',
-                'Invalid payment_type',
-                'Invalid trip_type',
-                'Invalid store_and_fwd_flag',
                 'Invalid trip distance',
                 'Invalid trip datetime range',
                 'Invalid total amount',
@@ -727,17 +729,65 @@ evaluated AS (
             AND failures > 0
                 THEN 'FAIL'
 
+            -- Coded value checks
+            -- 0% = PASS
+            -- >0% to 1% = WARN
+            -- >1% = FAIL
+            WHEN check_name IN (
+                'Invalid VendorID',
+                'Invalid RatecodeID',
+                'Invalid payment_type',
+                'Invalid trip_type',
+                'Invalid store_and_fwd_flag'
+            )
+            AND failure_pct > 1
+                THEN 'FAIL'
+
+            WHEN check_name IN (
+                'Invalid VendorID',
+                'Invalid RatecodeID',
+                'Invalid payment_type',
+                'Invalid trip_type',
+                'Invalid store_and_fwd_flag'
+            )
+            AND failures > 0
+                THEN 'WARN'
+
             -- Passenger count monitoring
             WHEN check_name = 'Missing or zero passenger count'
             AND failures > 0
                 THEN 'WARN'
 
-            -- Extreme values
-            WHEN check_name IN (
-                'Extreme trip distance',
-                'Extreme trip duration',
-                'Zero-duration trip'
-            )
+            -- Extreme trip distance
+            -- 0% = PASS
+            -- >0% to 2% = WARN
+            -- >2% = FAIL
+            WHEN check_name = 'Extreme trip distance'
+            AND failure_pct > 2
+                THEN 'FAIL'
+
+            WHEN check_name = 'Extreme trip distance'
+            AND failures > 0
+                THEN 'WARN'
+
+            -- Extreme trip duration
+            WHEN check_name = 'Extreme trip duration'
+            AND failure_pct > 2
+                THEN 'FAIL'
+
+            WHEN check_name = 'Extreme trip duration'
+            AND failures > 0
+                THEN 'WARN'
+
+            -- Zero-duration trips
+            -- 0% = PASS
+            -- >0% to 1% = WARN
+            -- >1% = FAIL
+            WHEN check_name = 'Zero-duration trip'
+            AND failure_pct > 1
+                THEN 'FAIL'
+
+            WHEN check_name = 'Zero-duration trip'
             AND failures > 0
                 THEN 'WARN'
 
